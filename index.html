@@ -545,6 +545,133 @@
 <script>
     let productsData = [];
 
+    function filterProducts() {
+        return productsData.filter(p => {
+            if (activeFilters.category !== "all" && p.category !== activeFilters.category) return false;
+            if (activeFilters.material !== "all" && p.material !== activeFilters.material) return false;
+            if (activeFilters.style !== "all" && p.style !== activeFilters.style) return false;
+            if (activeFilters.size !== "all" && p.size !== activeFilters.size) return false;
+            let moqNum = parseInt(activeFilters.moq);
+            if (!isNaN(moqNum) && moqNum > 0 && p.moq < moqNum) return false;
+            if (activeFilters.keyword.trim() !== "") {
+                const kw = activeFilters.keyword.toLowerCase();
+                return p.name.toLowerCase().includes(kw) || p.desc.toLowerCase().includes(kw) || p.material.toLowerCase().includes(kw);
+            }
+            return true;
+        });
+    }
+
+    function renderProducts() {
+        const filtered = filterProducts();
+        const grid = document.getElementById("productsGrid");
+        if (!grid) return;
+        if(filtered.length === 0) {
+            grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:60px;">No products match your filters. Try resetting.</div>`;
+            return;
+        }
+        grid.innerHTML = filtered.map(p => `
+            <div class="product-card" data-id="${p.id}">
+                <div class="card-img" style="background-image: url('${p.img}'); background-size: cover;"></div>
+                <div class="card-info">
+                    <div class="product-category">${p.catName}</div>
+                    <div class="product-title">${p.name}</div>
+                    <div class="product-desc">${p.desc}</div>
+                    <div class="meta-row">
+                        <span class="meta-tag">🧵 ${p.material}</span>
+                        <span class="meta-tag">🎯 ${p.style}</span>
+                        <span class="meta-tag">📏 ${p.size}</span>
+                        <span class="meta-tag">📦 MOQ: ${p.moq}+</span>
+                    </div>
+                    <div class="price-row">
+                        <div><span class="price">$${p.price.toLocaleString()}</span> ${p.oldPrice ? `<span class="old-price">$${p.oldPrice.toLocaleString()}</span>` : ''}</div>
+                        <div class="rating">★ ${p.rating}</div>
+                    </div>
+                    <button class="btn-small quote-item" data-name="${p.name}">Request Quote</button>
+                </div>
+            </div>
+        `).join('');
+        
+        document.querySelectorAll('.quote-item').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const productName = btn.getAttribute('data-name');
+                alert(`✅ Quote request sent for: ${productName}\nOur team will reply within 24h with MOQ pricing.`);
+            });
+        });
+    }
+
+    function applyFiltersFromUI() {
+        activeFilters.category = document.getElementById('searchCategory').value;
+        activeFilters.material = document.getElementById('searchMaterial').value;
+        activeFilters.style = document.getElementById('searchStyle').value;
+        activeFilters.size = document.getElementById('searchSize').value;
+        activeFilters.moq = document.getElementById('searchMOQ').value;
+        activeFilters.keyword = document.getElementById('searchKeyword').value;
+        renderProducts();
+    }
+
+    function resetFilters() {
+        document.getElementById('searchCategory').value = "all";
+        document.getElementById('searchMaterial').value = "all";
+        document.getElementById('searchStyle').value = "all";
+        document.getElementById('searchSize').value = "all";
+        document.getElementById('searchMOQ').value = "0";
+        document.getElementById('searchKeyword').value = "";
+        applyFiltersFromUI();
+    }
+
+    // PDF Generation using browser print with styled content
+    function downloadPDF() {
+        const originalTitle = document.title;
+        document.title = "MotoRig_Catalog_Export";
+        const printContents = document.getElementById('productsGrid').cloneNode(true);
+        const filtersInfo = document.querySelector('.search-panel').cloneNode(true);
+        const heroSection = document.querySelector('.hero').cloneNode(true);
+        const container = document.createElement('div');
+        container.style.padding = '20px';
+        container.style.fontFamily = 'Inter, sans-serif';
+        const header = document.createElement('h1');
+        header.innerText = 'MotoRig PRO - Riding Gear Catalog';
+        header.style.marginBottom = '10px';
+        const date = new Date().toLocaleDateString();
+        const dateP = document.createElement('p');
+        dateP.innerText = `Generated: ${date} | Advanced Filter Results`;
+        container.appendChild(header);
+        container.appendChild(dateP);
+        container.appendChild(heroSection);
+        const filterCopy = filtersInfo.cloneNode(true);
+        filterCopy.querySelectorAll('button').forEach(btn => btn.style.display = 'none');
+        container.appendChild(filterCopy);
+        container.appendChild(printContents);
+        const originalBody = document.body.innerHTML;
+        document.body.innerHTML = container.outerHTML;
+        window.print();
+        document.body.innerHTML = originalBody;
+        document.title = originalTitle;
+        window.location.reload();
+    }
+
+    function requestMasterQuote() {
+        let quoteMsg = "📦 BULK QUOTE REQUEST\n\n";
+        const filtered = filterProducts();
+        if(filtered.length === 0) quoteMsg += "No items selected. Please adjust filters.\n";
+        else {
+            quoteMsg += `Requesting quote for ${filtered.length} product(s):\n`;
+            filtered.forEach(p => quoteMsg += `- ${p.name} (MOQ from ${p.moq}+, Material: ${p.material})\n`);
+            quoteMsg += "\nPlease send pricing & lead time to my email. Thank you.";
+        }
+        alert(quoteMsg + "\n\n(A demo quote request — sales team will contact you within 24h)");
+    }
+
+    let activeFilters = {
+        category: "all",
+        material: "all",
+        style: "all",
+        size: "all",
+        moq: 0,
+        keyword: ""
+    };
+
     async function loadProducts() {
         try {
             const response = await fetch('products.json');
@@ -564,10 +691,19 @@
         document.getElementById('requestQuoteBtn').addEventListener('click', requestMasterQuote);
         
         // Admin Logic
-        document.getElementById('toggleAdminBtn').addEventListener('click', () => {
-            const panel = document.getElementById('adminPanel');
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-        });
+        const toggleBtn = document.getElementById('toggleAdminBtn');
+        const adminPanel = document.getElementById('adminPanel');
+        
+        if (toggleBtn && adminPanel) {
+            toggleBtn.addEventListener('click', () => {
+                console.log('Manager button clicked');
+                const isHidden = adminPanel.style.display === 'none' || adminPanel.style.display === '';
+                adminPanel.style.display = isHidden ? 'block' : 'none';
+                if (isHidden) {
+                    adminPanel.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        }
 
         document.getElementById('generateJSONBtn').addEventListener('click', () => {
             const newProduct = {
